@@ -250,6 +250,17 @@ generateSGFMoves history = case history of
     (((x, y), color) :: moves) -> generateSGFMoves moves ++ ";" ++ colorToChar color ++ "[" ++ toLetter x ++ toLetter y ++ "]"
     [] -> ""
 
+generateMarker : Maybe ((Int, Int), Color) -> Svg.Svg msg
+generateMarker mm = case mm of
+    Nothing -> Svg.g [] []
+    Just ((x, y), _) -> let fx = toFloat x + 0.5
+                            fy = toFloat y + 0.5
+                            sr = 0.15 in Svg.rect [SvgAt.fill "red",
+        fx - sr |> toString |> SvgAt.x,
+        fy - sr |> toString |> SvgAt.y,
+        sr * 2 |> toString |> SvgAt.width,
+        sr * 2 |> toString |> SvgAt.height] []
+
 view : Model -> Html.Html Msg
 view model =
     HtmlK.node "div" [] [
@@ -260,6 +271,7 @@ view model =
         ("grid", generateGrid model.state.size),
         ("stars", generateStars model.state.size),
         ("circles", generateCircles model.state.grid),
+        ("marker", List.head model.state.history |> generateMarker),
         ("hover", generateHover model.state model.hover),
         ("targets", generateTargets model.state.size)
     ]),
