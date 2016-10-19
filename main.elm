@@ -1,12 +1,14 @@
 import Html
 import Html.App as App
 import Html.Attributes as HtmlAt
+import Html.Events as HtmlEv
 import Html.Keyed as HtmlK
 import Json.Decode as JsonD exposing (..)
 import Svg
 import Svg.Keyed as SvgK
 import Svg.Attributes as SvgAt
 import Svg.Events as SvgEv
+import Char
 import String
 import Array
 
@@ -38,7 +40,7 @@ type alias GameState = {
     grid: Grid,
     turn: Color, -- clicking will create this color
     last: Grid,
-    history: List ((Int, Int), Color)
+    history: List ((Int, Int), Color) -- backwards
 }
 
 type alias Model = {
@@ -51,7 +53,7 @@ createGrid : Int -> Grid
 createGrid size = Array.repeat size (Array.repeat size Nothing)
 
 initialState : Int -> GameState
-initialState size = let empty = createGrid size in { grid = empty, turn = Black, last = empty }
+initialState size = let empty = createGrid size in { grid = empty, turn = Black, last = empty, history = [] }
 
 createModel : Int -> Model
 createModel size = { size = size, state = initialState size, hover = (-1, -1) }
@@ -122,14 +124,20 @@ captureHelperHelper color grid pos macc = case macc of
 click : (Int, Int) -> GameState -> GameState
 click pos state = case clickGrid pos state.turn state.grid of
     Just ng -> if ng == state.last then state
-               else { state | turn = otherColor state.turn, grid = ng, last = state.grid }
+               else { state | turn = otherColor state.turn,
+                              grid = ng, last = state.grid,
+                              history = (pos, state.turn) :: state.history }
     Nothing -> state
+
+pass : GameState -> GameState
+pass state = { state | turn = otherColor state.turn }
 
 update : Msg -> Model -> Model
 update msg model =
     case msg of
         Click pos -> { model | state = click pos model.state }
         Hover pos -> { model | hover = pos }
+        Pass -> { model | state = pass model.state }
 
 generateGrid : Int -> Svg.Svg msg
 generateGrid size = let stroke = [ SvgAt.stroke "black", SvgAt.strokeWidth "0.1" ] in
@@ -205,6 +213,17 @@ generateHover state pos = case pos of
     (-1, -1) -> Svg.g [] []
     _ -> Svg.circle (SvgAt.opacity "0.5" :: circleAttributes pos state.turn) []
 
+generateSGF : Int -> List ((Int, Int), Color) -> String
+generateSGF size history = "(;FF[4]GM[1]SZ[" ++ toString size ++ "](" ++ generateSGFMoves history ++ "))"
+
+toLetter : Int -> String
+toLetter x = Char.fromCode (x + 97) |> String.fromChar
+
+generateSGFMoves : List ((Int, Int), Color) -> String
+generateSGFMoves history = case history of
+    (((x, y), color) :: moves) -> generateSGFMoves moves ++ ";" ++ colorToChar color ++ "[" ++ toLetter x ++ toLetter y ++ "]"
+    [] -> ""
+
 view : Model -> Html.Html Msg
 view model =
     HtmlK.node "div" [] [
@@ -218,5 +237,7 @@ view model =
         ("hover", generateHover model.state model.hover),
         ("targets", generateTargets model.size)
     ]),
-    ("status", Html.div [] [ Html.text ("It is " ++ colorToString model.state.turn ++ "'s turn") ])
+    ("status", Html.div [] [ Html.text ("It is " ++ colorToString model.state.turn ++ "'s turn") ]),
+    ("pass", Html.button [ HtmlEv.onClick Pass ] [ Html.text "Pass" ]),
+    ("sgf", Html.textarea [ HtmlAt.readonly True ] [ Html.text (generateSGF model.size model.state.history) ])
     ]
