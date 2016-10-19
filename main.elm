@@ -36,7 +36,9 @@ type alias Grid = Array.Array (Array.Array (Maybe Color))
 
 type alias GameState = {
     grid: Grid,
-    turn: Color -- clicking will create this color
+    turn: Color, -- clicking will create this color
+    last: Grid,
+    history: List ((Int, Int), Color)
 }
 
 type alias Model = {
@@ -49,7 +51,7 @@ createGrid : Int -> Grid
 createGrid size = Array.repeat size (Array.repeat size Nothing)
 
 initialState : Int -> GameState
-initialState size = { grid = createGrid size, turn = Black }
+initialState size = let empty = createGrid size in { grid = empty, turn = Black, last = empty }
 
 createModel : Int -> Model
 createModel size = { size = size, state = initialState size, hover = (-1, -1) }
@@ -59,6 +61,7 @@ model = createModel 19
 
 type Msg = Click (Int, Int)
          | Hover (Int, Int)
+         | Pass
 
 -- returns Nothing if suicide
 clickGrid : (Int, Int) -> Color -> Grid -> Maybe Grid
@@ -118,7 +121,8 @@ captureHelperHelper color grid pos macc = case macc of
 
 click : (Int, Int) -> GameState -> GameState
 click pos state = case clickGrid pos state.turn state.grid of
-    Just ng -> { state | turn = otherColor state.turn, grid = ng }
+    Just ng -> if ng == state.last then state
+               else { state | turn = otherColor state.turn, grid = ng, last = state.grid }
     Nothing -> state
 
 update : Msg -> Model -> Model
