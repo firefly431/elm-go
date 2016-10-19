@@ -36,12 +36,13 @@ type alias Grid = Array.Array (Array.Array (Maybe Color))
 
 type alias GameState = {
     grid: Grid,
-    turn: Color -- cilcking will create this color
+    turn: Color -- clicking will create this color
 }
 
 type alias Model = {
     size: Int,
-    state: GameState
+    state: GameState,
+    hover: (Int, Int)
 }
 
 createGrid : Int -> Grid
@@ -51,16 +52,17 @@ initialState : Int -> GameState
 initialState size = { grid = createGrid size, turn = Black }
 
 createModel : Int -> Model
-createModel size = { size = size, state = initialState size }
+createModel size = { size = size, state = initialState size, hover = (-1, -1) }
 
 model : Model
 model = createModel 19
 
-type Msg = Click Int Int
+type Msg = Click (Int, Int)
+         | Hover (Int, Int)
 
 -- returns Nothing if suicide
-clickGrid : Int -> Int -> Color -> Grid -> Maybe Grid
-clickGrid x y color grid = let pos = (x, y) in case gridGet grid pos of
+clickGrid : (Int, Int) -> Color -> Grid -> Maybe Grid
+clickGrid pos color grid = case gridGet grid pos of
     Nothing -> Nothing -- somehow clicked outside the board
     Just (Just _) -> Nothing -- already placed
     Just Nothing -> case gridSet grid pos (Just color)
@@ -114,15 +116,16 @@ captureHelperHelper color grid pos macc = case macc of
     Nothing -> Nothing
     Just acc -> captureHelper color grid pos acc
 
-click : Int -> Int -> GameState -> GameState
-click x y state = case clickGrid x y state.turn state.grid of
+click : (Int, Int) -> GameState -> GameState
+click pos state = case clickGrid pos state.turn state.grid of
     Just ng -> { state | turn = otherColor state.turn, grid = ng }
     Nothing -> state
 
 update : Msg -> Model -> Model
 update msg model =
     case msg of
-        Click x y -> { model | state = click x y model.state }
+        Click pos -> { model | state = click pos model.state }
+        Hover pos -> { model | hover = pos }
 
 generateGrid : Int -> Svg.Svg msg
 generateGrid size = let stroke = [ SvgAt.stroke "black", SvgAt.strokeWidth "0.1" ] in
@@ -175,18 +178,28 @@ generateTargets size = List.concatMap (\y -> List.map (\x -> Svg.rect [
         SvgAt.width "1", SvgAt.height "1",
         SvgAt.visibility "hidden",
         SvgAt.style "pointer-events: fill",
-        SvgEv.onClick (Click x y)
+        SvgEv.onClick (Click (x, y)),
+        SvgEv.onMouseOver (Hover (x, y))
     ] []) [0..size - 1]) [0..size - 1]
-    |> Svg.g []
+    |> Svg.g [ SvgEv.onMouseOut (Hover (-1, -1)) ]
+
+circleAttributes : (Int, Int) -> Color -> List (Svg.Attribute msg)
+circleAttributes (xz, yz) stone = [
+    SvgAt.cx (toString (toFloat xz + 0.5)), SvgAt.cy (toString (toFloat yz + 0.5)), SvgAt.r "0.40",
+    SvgAt.stroke "black", SvgAt.strokeWidth "0.1", SvgAt.fill (colorToString stone)]
 
 generateCircles : Grid -> Svg.Svg msg
 generateCircles grid = List.indexedMap (\yz row -> List.indexedMap (\xz ->
     Maybe.map (\stone -> (colorToChar stone ++ toString xz ++ "," ++ toString yz,
-        Svg.circle [SvgAt.cx (toString (toFloat xz + 0.5)), SvgAt.cy (toString (toFloat yz + 0.5)), SvgAt.r "0.40",
-                    SvgAt.stroke "black", SvgAt.strokeWidth "0.1", SvgAt.fill (colorToString stone)] [])))
+        Svg.circle (circleAttributes (xz, yz) stone) [])))
         (Array.toList row) |> List.filterMap identity) (Array.toList grid)
     |> List.concat
     |> SvgK.node "g" []
+
+generateHover : GameState -> (Int, Int) -> Svg.Svg msg
+generateHover state pos = case pos of
+    (-1, -1) -> Svg.g [] []
+    _ -> Svg.circle (SvgAt.opacity "0.5" :: circleAttributes pos state.turn) []
 
 view : Model -> Html.Html Msg
 view model =
@@ -198,6 +211,7 @@ view model =
         ("grid", generateGrid model.size),
         ("stars", generateStars model.size),
         ("circles", generateCircles model.state.grid),
+        ("hover", generateHover model.state model.hover),
         ("targets", generateTargets model.size)
     ]),
     ("status", Html.div [] [ Html.text ("It is " ++ colorToString model.state.turn ++ "'s turn") ])
