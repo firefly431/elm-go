@@ -37,6 +37,7 @@ colorToString c = case c of
 type alias Grid = Array.Array (Array.Array (Maybe Color))
 
 type alias GameState = {
+    size: Int,
     grid: Grid,
     turn: Color, -- clicking will create this color
     last: Grid,
@@ -44,7 +45,6 @@ type alias GameState = {
 }
 
 type alias Model = {
-    size: Int,
     state: GameState,
     hover: (Int, Int)
 }
@@ -53,10 +53,30 @@ createGrid : Int -> Grid
 createGrid size = Array.repeat size (Array.repeat size Nothing)
 
 initialState : Int -> GameState
-initialState size = let empty = createGrid size in { grid = empty, turn = Black, last = empty, history = [] }
+initialState size = let empty = createGrid size in {
+    grid = empty,
+    turn = Black,
+    last = empty,
+    history = [],
+    size = size}
 
+replay : Int -> List ((Int, Int), Color) -> Maybe GameState
+replay size history =
+    case history of
+        first :: rest ->
+            let play move (_, gr) = uncurry clickGrid move gr |> Maybe.map (\ng -> (gr, ng))
+                empty = createGrid size
+            in
+                List.foldr (flip Maybe.andThen << play) ((empty, empty) |> Just) history
+                |> Maybe.map (\(last, grid) -> {
+                grid = grid,
+                turn = first |> snd |> otherColor,
+                last = last,
+                history = history,
+                size = size})
+        [] -> Just (initialState size)
 createModel : Int -> Model
-createModel size = { size = size, state = initialState size, hover = (-1, -1) }
+createModel size = { state = initialState size, hover = (-1, -1) }
 
 model : Model
 model = createModel 19
@@ -64,6 +84,7 @@ model = createModel 19
 type Msg = Click (Int, Int)
          | Hover (Int, Int)
          | Pass
+         | Undo
 
 -- returns Nothing if suicide
 clickGrid : (Int, Int) -> Color -> Grid -> Maybe Grid
@@ -138,6 +159,11 @@ update msg model =
         Click pos -> { model | state = click pos model.state }
         Hover pos -> { model | hover = pos }
         Pass -> { model | state = pass model.state }
+        Undo -> { model | state = case List.tail model.state.history of
+            Just t -> case replay model.state.size t of
+                Just st -> st
+                Nothing -> model.state
+            Nothing -> model.state }
 
 generateGrid : Int -> Svg.Svg msg
 generateGrid size = let stroke = [ SvgAt.stroke "black", SvgAt.strokeWidth "0.1" ] in
@@ -228,16 +254,17 @@ view : Model -> Html.Html Msg
 view model =
     HtmlK.node "div" [] [
     ("svg", SvgK.node "svg" [
-        SvgAt.viewBox ("0 0 " ++ (toString model.size) ++ " " ++ (toString model.size)),
+        SvgAt.viewBox ("0 0 " ++ (toString model.state.size) ++ " " ++ (toString model.state.size)),
         SvgAt.width "380", SvgAt.height "380"] [
-        ("bgrect", Svg.rect [SvgAt.x "0", SvgAt.y "0", SvgAt.width (toString model.size), SvgAt.height (toString model.size), SvgAt.fill bg_color] []),
-        ("grid", generateGrid model.size),
-        ("stars", generateStars model.size),
+        ("bgrect", Svg.rect [SvgAt.x "0", SvgAt.y "0", SvgAt.width (toString model.state.size), SvgAt.height (toString model.state.size), SvgAt.fill bg_color] []),
+        ("grid", generateGrid model.state.size),
+        ("stars", generateStars model.state.size),
         ("circles", generateCircles model.state.grid),
         ("hover", generateHover model.state model.hover),
-        ("targets", generateTargets model.size)
+        ("targets", generateTargets model.state.size)
     ]),
     ("status", Html.div [] [ Html.text ("It is " ++ colorToString model.state.turn ++ "'s turn") ]),
     ("pass", Html.button [ HtmlEv.onClick Pass ] [ Html.text "Pass" ]),
-    ("sgf", Html.textarea [ HtmlAt.readonly True ] [ Html.text (generateSGF model.size model.state.history) ])
+    ("undo", Html.button [ HtmlEv.onClick Undo ] [ Html.text "Undo" ]),
+    ("sgf", Html.textarea [ HtmlAt.readonly True ] [ Html.text (generateSGF model.state.size model.state.history) ])
     ]
