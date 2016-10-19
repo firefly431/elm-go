@@ -10,6 +10,9 @@ import Svg.Events as SvgEv
 import String
 import Array
 
+bg_color : String
+bg_color = "#f2b06d"
+
 main = App.beginnerProgram { model = model, view = view, update = update }
 
 type Color = Black | White
@@ -136,6 +139,36 @@ generateGrid size = let stroke = [ SvgAt.stroke "black", SvgAt.strokeWidth "0.1"
         ]) [0..size - 1]
     |> Svg.g []
 
+corners : Int -> Int -> List (Int, Int)
+corners size border = [
+    (border, border),
+    (border, size - border + 1),
+    (size - border + 1, border),
+    (size - border + 1, size - border + 1)]
+
+sides : Int -> Int -> List (Int, Int)
+sides size border = [
+    (border, (size + 1) // 2),
+    ((size + 1) // 2, border),
+    (size - border + 1, (size + 1) // 2),
+    ((size + 1) // 2, size - border + 1)]
+
+center : Int -> (Int, Int)
+center size = ((size + 1) // 2, (size + 1) // 2)
+
+generateStars : Int -> Svg.Svg msg
+generateStars size = (case size of
+        19 -> corners size 4 ++ sides size 4 |> (::) (center size)
+        13 -> corners size 4 |> (::) (center size)
+        9 -> corners size 3 |> (::) (center size)
+        _ -> []
+    )
+    |> List.map (\(ix, iy) ->
+        let x = toString (toFloat ix - 0.5)
+            y = toString (toFloat iy - 0.5) in
+                Svg.circle [ SvgAt.cx x, SvgAt.cy y, SvgAt.r "0.15" ] [] )
+    |> Svg.g []
+
 generateTargets : Int -> Svg.Svg Msg
 generateTargets size = List.concatMap (\y -> List.map (\x -> Svg.rect [
         SvgAt.x (toString x), SvgAt.y (toString y),
@@ -161,8 +194,9 @@ view model =
     ("svg", SvgK.node "svg" [
         SvgAt.viewBox ("0 0 " ++ (toString model.size) ++ " " ++ (toString model.size)),
         SvgAt.width "380", SvgAt.height "380"] [
-        ("bgrect", Svg.rect [SvgAt.x "0", SvgAt.y "0", SvgAt.width (toString model.size), SvgAt.height (toString model.size), SvgAt.fill "#f2b06d"] []),
+        ("bgrect", Svg.rect [SvgAt.x "0", SvgAt.y "0", SvgAt.width (toString model.size), SvgAt.height (toString model.size), SvgAt.fill bg_color] []),
         ("grid", generateGrid model.size),
+        ("stars", generateStars model.size),
         ("circles", generateCircles model.state.grid),
         ("targets", generateTargets model.size)
     ]),
