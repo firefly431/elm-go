@@ -92,14 +92,14 @@ type Msg = Click (Int, Int)
          | ScoreChk
          | ChangeKomi String
 
--- returns Nothing if suicide
+-- returns Nothing if invalid (does not check for ko)
 clickGrid : (Int, Int) -> Color -> Grid -> Maybe Grid
 clickGrid pos color grid = case gridGet grid pos of
     Nothing -> Nothing -- somehow clicked outside the board
     Just (Just _) -> Nothing -- already placed
-    Just Nothing -> case gridSet grid pos (Just color)
-        |> (\og -> List.foldl (captureHelper2 (otherColor color)) (False, og) (neighbors pos)) of
-                (True, ng) -> Just ng
+    Just Nothing -> case let og = gridSet grid pos (Just color) in
+            List.foldl (captureHelper2 (otherColor color)) (False, og) (neighbors pos) of
+                (True, ng) -> Just ng |> Debug.log "capture"
                 (False, og) ->
                     -- check if suicide
                     case captureHelper2 color pos (False, og) of
@@ -126,9 +126,14 @@ neighbors : (Int, Int) -> List (Int, Int)
 neighbors (x, y) = [(x + 1, y), (x, y - 1), (x - 1, y), (x, y + 1)]
 
 captureHelper2 : Color -> (Int, Int) -> (Bool, Grid) -> (Bool, Grid)
-captureHelper2 color pos (done, grid) = case capture color grid pos of
-    Just ng -> (True, ng)
+captureHelper2 color pos (done, grid) = case gridGet grid pos of
     Nothing -> (done, grid)
+    Just c -> case c of
+        Nothing -> (done, grid)
+        Just cc -> if cc /= color then (done, grid) else
+                      case capture color grid pos of
+                          Nothing -> (done, grid)
+                          Just ng -> (True, ng)
 
 -- takes an accumulator (currently captured pieces)
 captureHelper : Color -> Grid -> (Int, Int) -> Grid -> Maybe Grid
