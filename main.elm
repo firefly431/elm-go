@@ -46,7 +46,9 @@ type alias GameState = {
 
 type alias Model = {
     state: GameState,
-    hover: (Int, Int)
+    hover: (Int, Int),
+    scoring: Bool,
+    orig: Grid -- store original board so can revert after scoring
 }
 
 createGrid : Int -> Grid
@@ -76,7 +78,8 @@ replay size history =
                 size = size})
         [] -> Just (initialState size)
 createModel : Int -> Model
-createModel size = { state = initialState size, hover = (-1, -1) }
+createModel size = let is = initialState size
+                   in { state = is, hover = (-1, -1), scoring = False, orig = is.grid }
 
 model : Model
 model = createModel 19
@@ -85,6 +88,7 @@ type Msg = Click (Int, Int)
          | Hover (Int, Int)
          | Pass
          | Undo
+         | ScoreChk
 
 -- returns Nothing if suicide
 clickGrid : (Int, Int) -> Color -> Grid -> Maybe Grid
@@ -156,7 +160,7 @@ pass state = { state | turn = otherColor state.turn }
 update : Msg -> Model -> Model
 update msg model =
     case msg of
-        Click pos -> { model | state = click pos model.state }
+        Click pos -> { model | state = (if model.scoring then scoreClick else click) pos model.state }
         Hover pos -> { model | hover = pos }
         Pass -> { model | state = pass model.state }
         Undo -> { model | state = case List.tail model.state.history of
@@ -164,6 +168,9 @@ update msg model =
                 Just st -> st
                 Nothing -> model.state
             Nothing -> model.state }
+        ScoreChk -> case model.scoring of
+            True -> let nstate = model.state in { model | scoring = False, state = { nstate | grid = model.orig } }
+            False -> { model | scoring = True, orig = model.state.grid }
 
 generateGrid : Int -> Svg.Svg msg
 generateGrid size = let stroke = [ SvgAt.stroke "black", SvgAt.strokeWidth "0.1" ] in
@@ -261,6 +268,13 @@ generateMarker mm = case mm of
         sr * 2 |> toString |> SvgAt.width,
         sr * 2 |> toString |> SvgAt.height] []
 
+scoreClick : (Int, Int) -> GameState -> GameState
+scoreClick pos state = case gridGet state.grid pos of
+    Nothing -> state
+    Just mc -> case mc of
+        Nothing -> { state | grid = gridSet state.grid pos (Just state.turn) } -- then floodfill dame
+        Just c -> state -- floodfill remove
+
 view : Model -> Html.Html Msg
 view model =
     HtmlK.node "div" [] [
@@ -271,12 +285,17 @@ view model =
         ("grid", generateGrid model.state.size),
         ("stars", generateStars model.state.size),
         ("circles", generateCircles model.state.grid),
-        ("marker", List.head model.state.history |> generateMarker),
+        ("marker", generateMarker (if model.scoring then Nothing else List.head model.state.history)),
         ("hover", generateHover model.state model.hover),
         ("targets", generateTargets model.state.size)
     ]),
-    ("status", Html.div [] [ Html.text ("It is " ++ colorToString model.state.turn ++ "'s turn") ]),
-    ("pass", Html.button [ HtmlEv.onClick Pass ] [ Html.text "Pass" ]),
-    ("undo", Html.button [ HtmlEv.onClick Undo ] [ Html.text "Undo" ]),
-    ("sgf", Html.textarea [ HtmlAt.readonly True ] [ Html.text (generateSGF model.state.size model.state.history) ])
-    ]
+    ("controls", HtmlK.node "div" [] [
+        ("pass", Html.button [ HtmlEv.onClick Pass ] [ Html.text (if model.scoring then "Change color" else "Pass") ]),
+        ("undo", Html.button [ HtmlEv.onClick Undo, HtmlAt.disabled (model.scoring) ] [ Html.text "Undo" ])
+    ]),
+    ("scorepanel", HtmlK.node "div" [] [
+        ("scoremode",
+            Html.span [] [ Html.input [ HtmlAt.type' "checkbox", HtmlEv.onClick ScoreChk, HtmlAt.id "score" ] [ ],
+                           Html.label [ HtmlAt.for "score" ] [ Html.text "Scoring mode" ] ])
+    ]),
+    ("sgf", Html.textarea [ HtmlAt.readonly True ] [ Html.text (generateSGF model.state.size model.state.history) ])]
