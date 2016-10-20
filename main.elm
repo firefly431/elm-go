@@ -285,7 +285,8 @@ scoreClick pos state = case gridGet state.grid pos of
             turn = otherColor state.turn,
             grid = gridSet state.grid pos (Just state.turn)
                    |> flip (List.foldl (floodfillColor state.turn)) (neighbors pos) }
-        Just c -> { state | grid = floodfillRemove c pos state.grid } -- floodfill remove
+        Just c -> { state | grid = floodfillRemove c pos state.grid
+                                |> floodfillColor (otherColor c) pos } -- floodfill remove
 
 floodfillRemove : Color -> (Int, Int) -> Grid -> Grid
 floodfillRemove color pos grid = case gridGet grid pos of
