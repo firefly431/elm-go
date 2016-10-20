@@ -272,8 +272,18 @@ scoreClick : (Int, Int) -> GameState -> GameState
 scoreClick pos state = case gridGet state.grid pos of
     Nothing -> state
     Just mc -> case mc of
-        Nothing -> { state | grid = gridSet state.grid pos (Just state.turn) } -- then floodfill dame
-        Just c -> state -- floodfill remove
+        Nothing -> { state | -- filling dame
+            turn = otherColor state.turn,
+            grid = gridSet state.grid pos (Just state.turn) } -- then floodfill dame
+        Just c -> { state | grid = floodfillRemove c pos state.grid } -- floodfill remove
+
+floodfillRemove : Color -> (Int, Int) -> Grid -> Grid
+floodfillRemove color pos grid = case gridGet grid pos of
+    Nothing -> grid
+    Just mc -> case mc of
+        Nothing -> grid
+        Just c -> if c /= color then grid else
+                     List.foldl (floodfillRemove color) (gridSet grid pos Nothing) (neighbors pos)
 
 view : Model -> Html.Html Msg
 view model =
