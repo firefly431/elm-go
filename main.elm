@@ -99,7 +99,7 @@ clickGrid pos color grid = case gridGet grid pos of
     Just (Just _) -> Nothing -- already placed
     Just Nothing -> case let og = gridSet grid pos (Just color) in
             List.foldl (captureHelper2 (otherColor color)) (False, og) (neighbors pos) of
-                (True, ng) -> Just ng |> Debug.log "capture"
+                (True, ng) -> Just ng
                 (False, og) ->
                     -- check if suicide
                     case captureHelper2 color pos (False, og) of
