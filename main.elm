@@ -244,7 +244,9 @@ generateCircles grid = List.indexedMap (\yz row -> List.indexedMap (\xz ->
 generateHover : GameState -> (Int, Int) -> Svg.Svg msg
 generateHover state pos = case pos of
     (-1, -1) -> Svg.g [] []
-    _ -> Svg.circle (SvgAt.opacity "0.5" :: circleAttributes pos state.turn) []
+    _ -> case gridGet state.grid pos of
+        Just Nothing -> Svg.circle (SvgAt.opacity "0.5" :: circleAttributes pos state.turn) []
+        _ -> Svg.g [] []
 
 generateSGF : Int -> List ((Int, Int), Color) -> String
 generateSGF size history = "(;FF[4]GM[1]SZ[" ++ toString size ++ "](" ++ generateSGFMoves history ++ "))"
