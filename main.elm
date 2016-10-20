@@ -3,7 +3,7 @@ import Html.App as App
 import Html.Attributes as HtmlAt
 import Html.Events as HtmlEv
 import Html.Keyed as HtmlK
-import Json.Decode as JsonD exposing (..)
+import Json.Decode as JsonD
 import Svg
 import Svg.Keyed as SvgK
 import Svg.Attributes as SvgAt
@@ -48,7 +48,8 @@ type alias Model = {
     state: GameState,
     hover: (Int, Int),
     scoring: Bool,
-    orig: Grid -- store original board so can revert after scoring
+    orig: Grid, -- store original board so can revert after scoring
+    komi: Float
 }
 
 createGrid : Int -> Grid
@@ -79,7 +80,7 @@ replay size history =
         [] -> Just (initialState size)
 createModel : Int -> Model
 createModel size = let is = initialState size
-                   in { state = is, hover = (-1, -1), scoring = False, orig = is.grid }
+                   in { state = is, hover = (-1, -1), scoring = False, orig = is.grid, komi = 7.5 }
 
 model : Model
 model = createModel 19
@@ -89,6 +90,7 @@ type Msg = Click (Int, Int)
          | Pass
          | Undo
          | ScoreChk
+         | ChangeKomi String
 
 -- returns Nothing if suicide
 clickGrid : (Int, Int) -> Color -> Grid -> Maybe Grid
@@ -168,9 +170,14 @@ update msg model =
                 Just st -> st
                 Nothing -> model.state
             Nothing -> model.state }
-        ScoreChk -> case model.scoring of
-            True -> let nstate = model.state in { model | scoring = False, state = { nstate | grid = model.orig } }
-            False -> { model | scoring = True, orig = model.state.grid }
+        ScoreChk -> let nstate = model.state in
+            case model.scoring of
+                True -> { model | scoring = False, state = { nstate | grid = model.orig } }
+                False -> { model | scoring = True, orig = model.state.grid,
+                           state = { nstate | grid = fillDame nstate.size nstate.grid } }
+        ChangeKomi k -> case String.toFloat k of
+            Ok f -> { model | komi = f }
+            Err _ -> model
 
 generateGrid : Int -> Svg.Svg msg
 generateGrid size = let stroke = [ SvgAt.stroke "black", SvgAt.strokeWidth "0.1" ] in
@@ -276,7 +283,8 @@ scoreClick pos state = case gridGet state.grid pos of
     Just mc -> case mc of
         Nothing -> { state | -- filling dame
             turn = otherColor state.turn,
-            grid = gridSet state.grid pos (Just state.turn) } -- then floodfill dame
+            grid = gridSet state.grid pos (Just state.turn)
+                   |> flip (List.foldl (floodfillColor state.turn)) (neighbors pos) }
         Just c -> { state | grid = floodfillRemove c pos state.grid } -- floodfill remove
 
 floodfillRemove : Color -> (Int, Int) -> Grid -> Grid
@@ -286,6 +294,35 @@ floodfillRemove color pos grid = case gridGet grid pos of
         Nothing -> grid
         Just c -> if c /= color then grid else
                      List.foldl (floodfillRemove color) (gridSet grid pos Nothing) (neighbors pos)
+
+floodfillColorHelper : Color -> (Int, Int) -> Grid -> Maybe Grid
+floodfillColorHelper color pos grid = case gridGet grid pos of
+    Nothing -> Just grid
+    Just mc -> case mc of
+        Just c -> if c == color then Just grid else Nothing
+        Nothing -> List.foldl (flip Maybe.andThen << floodfillColorHelper color) (gridSet grid pos (Just color) |> Just) (neighbors pos)
+
+floodfillColor : Color -> (Int, Int) -> Grid -> Grid
+floodfillColor color pos grid = floodfillColorHelper color pos grid |> Maybe.withDefault grid
+
+floodfillAny : (Int, Int) -> Grid -> Grid
+floodfillAny pos grid = let ff c = floodfillColorHelper c pos grid in
+                        List.map ff [Black, White] |> Maybe.oneOf |> Maybe.withDefault grid
+
+fillDame : Int -> Grid -> Grid
+fillDame size =
+    List.concatMap (\y -> List.map ((,) y) [0..size - 1]) [0..size - 1]
+    |> flip (List.foldl floodfillAny)
+
+count : Grid -> (Int, Int) -- (B, W)
+count grid = grid
+    |> Array.toList
+    |> List.concatMap Array.toList
+    |> List.map (\mc -> case mc of
+        Nothing -> (0, 0)
+        Just Black -> (1, 0)
+        Just White -> (0, 1))
+    |> List.foldl (\(a1, b1) (a2, b2) -> (a1 + a2, b1 + b2)) (0, 0)
 
 view : Model -> Html.Html Msg
 view model =
@@ -302,12 +339,31 @@ view model =
         ("targets", generateTargets model.state.size)
     ]),
     ("controls", HtmlK.node "div" [] [
-        ("pass", Html.button [ HtmlEv.onClick Pass ] [ Html.text (if model.scoring then "Change color" else "Pass") ]),
+        ("pass", Html.button [ HtmlEv.onClick Pass ] [ Html.text "Pass" ]),
         ("undo", Html.button [ HtmlEv.onClick Undo, HtmlAt.disabled (model.scoring) ] [ Html.text "Undo" ])
     ]),
     ("scorepanel", HtmlK.node "div" [] [
         ("scoremode",
             Html.span [] [ Html.input [ HtmlAt.type' "checkbox", HtmlEv.onClick ScoreChk, HtmlAt.id "score" ] [ ],
-                           Html.label [ HtmlAt.for "score" ] [ Html.text "Scoring mode" ] ])
+                           Html.label [ HtmlAt.for "score" ] [ Html.text "Scoring mode" ] ]),
+        ("komi", Html.div [] [ Html.label [ HtmlAt.for "komi"] [ Html.text "Komi: " ],
+                               Html.input [ HtmlAt.type' "text", HtmlAt.id "komi",
+                                            HtmlAt.value (toString model.komi),
+                                            HtmlEv.onInput ChangeKomi ] [] ]),
+        ("results", if model.scoring then
+            let (b, w) = count model.state.grid in
+                Html.div [] [
+                    Html.p [] [ Html.text (
+                        "Black: " ++ toString b ++ ", White: " ++ toString w
+                    ) ],
+                    Html.p [] [ Html.text (
+                        let bs = toFloat b
+                            ws = toFloat w + model.komi in
+                                if bs > ws then "Black wins by " ++ toString (bs - ws)
+                           else if ws > bs then "White wins by " ++ toString (ws - bs)
+                                           else "Tie"
+                    ) ]
+                ]
+            else Html.div [] [])
     ]),
     ("sgf", Html.textarea [ HtmlAt.readonly True ] [ Html.text (generateSGF model.state.size model.state.history) ])]
