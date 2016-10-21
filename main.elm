@@ -338,12 +338,13 @@ count grid = grid
         Just White -> (0, 1))
     |> List.foldl (\(a1, b1) (a2, b2) -> (a1 + a2, b1 + b2)) (0, 0)
 
-radioSize : Int -> Html.Html Msg
-radioSize size = let btnId = "sz" ++ toString size in Html.span [] [
+radioSize : Int -> Int -> Html.Html Msg
+radioSize set size = let btnId = "sz" ++ toString size in Html.span [] [
     Html.input [
         HtmlAt.type' "radio",
         HtmlAt.name "size",
         HtmlAt.id btnId,
+        HtmlAt.checked (set == size),
         HtmlEv.onClick (ChangeSize size)] [],
     Html.label [ HtmlAt.for btnId ] [ Html.text (
         toString size ++ "x" ++ toString size )]]
@@ -365,7 +366,7 @@ view model =
     ("controls", HtmlK.node "div" [] [
         ("sizepanel", HtmlK.node "div" [] [
             ("sizelabel", Html.text "Size:"),
-            ("sizebuttons", sizes |> List.map radioSize |> Html.div [])
+            ("sizebuttons", sizes |> List.map (radioSize model.state.size) |> Html.div [])
         ]),
         ("pass", Html.button [ HtmlEv.onClick Pass ] [ Html.text "Pass" ]),
         ("undo", Html.button [ HtmlEv.onClick Undo, HtmlAt.disabled (model.scoring) ] [ Html.text "Undo" ])
