@@ -12,8 +12,14 @@ import Char
 import String
 import Array
 
+-- TODO: resign button
+--       results in SGF
+
 bg_color : String
 bg_color = "#f2b06d"
+
+sizes : List Int
+sizes = [9, 13, 19]
 
 main = App.beginnerProgram { model = model, view = view, update = update }
 
@@ -91,6 +97,7 @@ type Msg = Click (Int, Int)
          | Undo
          | ScoreChk
          | ChangeKomi String
+         | ChangeSize Int
 
 -- returns Nothing if invalid (does not check for ko)
 clickGrid : (Int, Int) -> Color -> Grid -> Maybe Grid
@@ -183,6 +190,7 @@ update msg model =
         ChangeKomi k -> case String.toFloat k of
             Ok f -> { model | komi = f }
             Err _ -> model
+        ChangeSize s -> createModel s
 
 generateGrid : Int -> Svg.Svg msg
 generateGrid size = let stroke = [ SvgAt.stroke "black", SvgAt.strokeWidth "0.1" ] in
@@ -330,6 +338,16 @@ count grid = grid
         Just White -> (0, 1))
     |> List.foldl (\(a1, b1) (a2, b2) -> (a1 + a2, b1 + b2)) (0, 0)
 
+radioSize : Int -> Html.Html Msg
+radioSize size = let btnId = "sz" ++ toString size in Html.span [] [
+    Html.input [
+        HtmlAt.type' "radio",
+        HtmlAt.name "size",
+        HtmlAt.id btnId,
+        HtmlEv.onClick (ChangeSize size)] [],
+    Html.label [ HtmlAt.for btnId ] [ Html.text (
+        toString size ++ "x" ++ toString size )]]
+
 view : Model -> Html.Html Msg
 view model =
     HtmlK.node "div" [] [
@@ -345,6 +363,10 @@ view model =
         ("targets", generateTargets model.state.size)
     ]),
     ("controls", HtmlK.node "div" [] [
+        ("sizepanel", HtmlK.node "div" [] [
+            ("sizelabel", Html.text "Size:"),
+            ("sizebuttons", sizes |> List.map radioSize |> Html.div [])
+        ]),
         ("pass", Html.button [ HtmlEv.onClick Pass ] [ Html.text "Pass" ]),
         ("undo", Html.button [ HtmlEv.onClick Undo, HtmlAt.disabled (model.scoring) ] [ Html.text "Undo" ])
     ]),
