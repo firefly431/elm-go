@@ -268,8 +268,18 @@ generateHover state pos = case pos of
         Just Nothing -> Svg.circle (SvgAt.opacity "0.5" :: circleAttributes pos state.turn) []
         _ -> Svg.g [] []
 
-generateSGF : Int -> List ((Int, Int), Color) -> String
-generateSGF size history = "(;FF[4]GM[1]SZ[" ++ toString size ++ "](" ++ generateSGFMoves history ++ "))"
+generateSGF : Int -> List ((Int, Int), Color) -> Float -> (Maybe (Int, Int)) -> String
+generateSGF size history komi mres = "(;FF[4]GM[1]SZ[" ++ toString size ++ "]KM[" ++ toString komi ++ "]" ++
+    (case mres of
+        Nothing -> ""
+        Just (b, w) -> "RE[" ++ (
+            let bs = toFloat b
+                ws = toFloat w + komi
+                in if bs > ws then "B+" ++ toString (bs - ws)
+              else if ws > bs then "W+" ++ toString (ws - bs)
+                              else "0"
+                      ) ++ "]")
+    ++ "(" ++ generateSGFMoves history ++ "))"
 
 toLetter : Int -> String
 toLetter x = Char.fromCode (x + 97) |> String.fromChar
@@ -392,20 +402,23 @@ view model =
                                                 |> JsonD.map ChangeKomi
                                                 )
                                                 ] [] ]),
-        ("results", if model.scoring then
-            let (b, w) = count model.state.grid in
-                Html.div [] [
-                    Html.p [] [ Html.text (
-                        "Black: " ++ toString b ++ ", White: " ++ toString w
-                    ) ],
-                    Html.p [] [ Html.text (
-                        let bs = toFloat b
-                            ws = toFloat w + model.komi in
-                                if bs > ws then "Black wins by " ++ toString (bs - ws)
-                           else if ws > bs then "White wins by " ++ toString (ws - bs)
-                                           else "Tie"
-                    ) ]
+        ("results",
+            let mresult = if model.scoring then count model.state.grid |> Just else Nothing in
+                (case mresult of
+                    Just (b, w) -> [
+                        ("counts", Html.p [] [ Html.text (
+                            "Black: " ++ toString b ++ ", White: " ++ toString w
+                        ) ]),
+                        ("result", Html.p [] [ Html.text (
+                            let bs = toFloat b
+                                ws = toFloat w + model.komi in
+                                   if      bs > ws then "Black wins by " ++ toString (bs - ws)
+                                   else if ws > bs then "White wins by " ++ toString (ws - bs)
+                                                   else "Tie"
+                        )])]
+                    Nothing -> []
+                ) ++ [
+                    ("sgf", Html.textarea [ HtmlAt.readonly True ] [ Html.text (generateSGF model.state.size model.state.history model.komi mresult) ])
                 ]
-            else Html.div [] [])
-    ]),
-    ("sgf", Html.textarea [ HtmlAt.readonly True ] [ Html.text (generateSGF model.state.size model.state.history) ])]
+        |> HtmlK.node "div" [])
+    ])]
