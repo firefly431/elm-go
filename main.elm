@@ -3,7 +3,7 @@ import Html.App as App
 import Html.Attributes as HtmlAt
 import Html.Events as HtmlEv
 import Html.Keyed as HtmlK
-import Json.Decode as JsonD
+import Json.Decode as JsonD exposing ((:=))
 import Svg
 import Svg.Keyed as SvgK
 import Svg.Attributes as SvgAt
@@ -95,7 +95,7 @@ type Msg = Click (Int, Int)
          | Hover (Int, Int)
          | Pass
          | Undo
-         | ScoreChk
+         | ScoreChk Bool
          | ChangeKomi String
          | ChangeSize Int
 
@@ -182,10 +182,10 @@ update msg model =
                 Just st -> st
                 Nothing -> model.state
             Nothing -> model.state }
-        ScoreChk -> let nstate = model.state in
-            case model.scoring of
-                True -> { model | scoring = False, state = { nstate | grid = model.orig } }
-                False -> { model | scoring = True, orig = model.state.grid,
+        ScoreChk b -> let nstate = model.state in
+            case b of
+                False -> { model | scoring = False, state = { nstate | grid = model.orig } }
+                True  -> { model | scoring = True, orig = model.state.grid,
                            state = { nstate | grid = fillDame nstate.size nstate.grid } }
         ChangeKomi k -> case String.toFloat k of
             Ok f -> { model | komi = f }
@@ -372,12 +372,25 @@ view model =
     ]),
     ("scorepanel", HtmlK.node "div" [] [
         ("scoremode",
-            Html.span [] [ Html.input [ HtmlAt.type' "checkbox", HtmlEv.onClick ScoreChk, HtmlAt.id "score" ] [ ],
+            Html.span [] [ Html.input [ HtmlAt.type' "checkbox", HtmlEv.on "change" (HtmlEv.targetChecked |> JsonD.map ScoreChk), HtmlAt.id "score" ] [ ],
                            Html.label [ HtmlAt.for "score" ] [ Html.text "Scoring mode" ] ]),
         ("komi", Html.div [] [ Html.label [ HtmlAt.for "komi"] [ Html.text "Komi: " ],
                                Html.input [ HtmlAt.type' "text", HtmlAt.id "komi",
                                             HtmlAt.value (toString model.komi),
-                                            HtmlEv.onInput ChangeKomi ] [] ]),
+                                            HtmlEv.on "keydown" (
+                                                JsonD.object2 (,)
+                                                    (JsonD.oneOf [
+                                                        "key" := JsonD.string
+                                                            |> JsonD.map ((==) "Enter"),
+                                                        "keyIdentifier" := JsonD.string
+                                                            |> JsonD.map ((==) "Enter"),
+                                                        "keyCode" := JsonD.int
+                                                            |> JsonD.map ((==) 13)])
+                                                    HtmlEv.targetValue
+                                                |> flip JsonD.andThen (\(b, v) -> if b then JsonD.succeed v else JsonD.fail "no string")
+                                                |> JsonD.map ChangeKomi
+                                                )
+                                                ] [] ]),
         ("results", if model.scoring then
             let (b, w) = count model.state.grid in
                 Html.div [] [
