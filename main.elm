@@ -12,8 +12,6 @@ import Char
 import String
 import Array
 
--- TODO: resign button
-
 bg_color : String
 bg_color = "#f2b06d"
 
@@ -54,7 +52,8 @@ type alias Model = {
     hover: (Int, Int),
     scoring: Bool,
     orig: Grid, -- store original board so can revert after scoring
-    komi: Float
+    komi: Float,
+    resign: Maybe Color
 }
 
 createGrid : Int -> Grid
@@ -83,17 +82,18 @@ replay size history =
                 history = history,
                 size = size})
         [] -> Just (initialState size)
-createModel : Int -> Model
-createModel size = let is = initialState size
-                   in { state = is, hover = (-1, -1), scoring = False, orig = is.grid, komi = 7.5 }
+createModel : Int -> Float -> Model
+createModel size komi = let is = initialState size
+                   in { state = is, hover = (-1, -1), scoring = False, orig = is.grid, komi = komi, resign = Nothing }
 
 model : Model
-model = createModel 19
+model = createModel 19 7.5
 
 type Msg = Click (Int, Int)
          | Hover (Int, Int)
          | Pass
          | Undo
+         | Resign
          | ScoreChk Bool
          | ChangeKomi String
          | ChangeSize Int
@@ -173,23 +173,27 @@ pass state = { state | turn = otherColor state.turn }
 update : Msg -> Model -> Model
 update msg model =
     case msg of
-        Click pos -> { model | state = (if model.scoring then scoreClick else click) pos model.state }
+        Click pos -> if isJust model.resign then model else { model | state = (if model.scoring then scoreClick else click) pos model.state }
         Hover pos -> { model | hover = pos }
         Pass -> { model | state = pass model.state }
-        Undo -> { model | state = case List.tail model.state.history of
-            Just t -> case replay model.state.size t of
-                Just st -> st
-                Nothing -> model.state
-            Nothing -> model.state }
-        ScoreChk b -> let nstate = model.state in
-            case b of
-                False -> { model | scoring = False, state = { nstate | grid = model.orig } }
-                True  -> { model | scoring = True, orig = model.state.grid,
-                           state = { nstate | grid = fillDame nstate.size nstate.grid } }
+        Undo -> if model.scoring then model else
+            { model | state = case List.tail model.state.history of
+                Just t -> case replay model.state.size t of
+                    Just st -> st
+                    Nothing -> model.state
+                Nothing -> model.state }
+        Resign -> case model.resign of
+            Nothing -> { model | resign = Just (model.state.turn), scoring = True }
+            Just _ ->  { model | resign = Nothing, scoring = False }
+        ScoreChk b -> if isJust (model.resign) then model else let nstate = model.state in
+                case b of
+                    False -> { model | scoring = False, state = { nstate | grid = model.orig } }
+                    True  -> { model | scoring = True, orig = model.state.grid,
+                               state = { nstate | grid = fillDame nstate.size nstate.grid } }
         ChangeKomi k -> case String.toFloat k of
             Ok f -> { model | komi = f }
             Err _ -> model
-        ChangeSize s -> createModel s
+        ChangeSize s -> createModel s model.komi
 
 generateGrid : Int -> Svg.Svg msg
 generateGrid size = let stroke = [ SvgAt.stroke "black", SvgAt.strokeWidth "0.1" ] in
@@ -267,17 +271,19 @@ generateHover state pos = case pos of
         Just Nothing -> Svg.circle (SvgAt.opacity "0.5" :: circleAttributes pos state.turn) []
         _ -> Svg.g [] []
 
-generateSGF : Int -> List ((Int, Int), Color) -> Float -> (Maybe (Int, Int)) -> String
-generateSGF size history komi mres = "(;FF[4]GM[1]SZ[" ++ toString size ++ "]KM[" ++ toString komi ++ "]" ++
-    (case mres of
-        Nothing -> ""
-        Just (b, w) -> "RE[" ++ (
-            let bs = toFloat b
-                ws = toFloat w + komi
-                in if bs > ws then "B+" ++ toString (bs - ws)
-              else if ws > bs then "W+" ++ toString (ws - bs)
-                              else "0"
-                      ) ++ "]")
+generateSGF : Int -> List ((Int, Int), Color) -> Float -> (Maybe (Int, Int)) -> Maybe Color -> String
+generateSGF size history komi mres resign = "(;FF[4]GM[1]SZ[" ++ toString size ++ "]KM[" ++ toString komi ++ "]" ++
+    (case resign of
+        Just cc -> "RE[" ++ colorToChar (otherColor cc) ++ "+Resign]"
+        Nothing -> case mres of
+            Nothing -> ""
+            Just (b, w) -> "RE[" ++ (
+                let bs = toFloat b
+                    ws = toFloat w + komi
+                    in if bs > ws then "B+" ++ toString (bs - ws)
+                  else if ws > bs then "W+" ++ toString (ws - bs)
+                                  else "0"
+                          ) ++ "]")
     ++ "(" ++ generateSGFMoves history ++ "))"
 
 toLetter : Int -> String
@@ -358,6 +364,11 @@ radioSize set size = let btnId = "sz" ++ toString size in Html.span [] [
     Html.label [ HtmlAt.for btnId ] [ Html.text (
         toString size ++ "x" ++ toString size )]]
 
+isJust : Maybe a -> Bool
+isJust a = case a of
+    Just _  -> True
+    Nothing -> False
+
 view : Model -> Html.Html Msg
 view model =
     HtmlK.node "div" [] [
@@ -378,11 +389,16 @@ view model =
             ("sizebuttons", sizes |> List.map (radioSize model.state.size) |> Html.div [])
         ]),
         ("pass", Html.button [ HtmlEv.onClick Pass ] [ Html.text "Pass" ]),
-        ("undo", Html.button [ HtmlEv.onClick Undo, HtmlAt.disabled (model.scoring) ] [ Html.text "Undo" ])
+        ("undo", Html.button [ HtmlEv.onClick Undo, HtmlAt.disabled (model.scoring) ] [ Html.text "Undo" ]),
+        ("resign", Html.button [ HtmlEv.onClick Resign ] [
+            Html.text <| case model.resign of
+                Nothing -> "Resign"
+                Just _  -> "Unresign"
+            ])
     ]),
     ("scorepanel", HtmlK.node "div" [] [
         ("scoremode",
-            Html.span [] [ Html.input [ HtmlAt.type' "checkbox", HtmlEv.on "change" (HtmlEv.targetChecked |> JsonD.map ScoreChk), HtmlAt.id "score" ] [ ],
+            Html.span [] [ Html.input [ HtmlAt.type' "checkbox", HtmlAt.checked model.scoring, HtmlAt.disabled (isJust model.resign), HtmlEv.on "change" (HtmlEv.targetChecked |> JsonD.map ScoreChk), HtmlAt.id "score" ] [ ],
                            Html.label [ HtmlAt.for "score" ] [ Html.text "Scoring mode" ] ]),
         ("komi", Html.div [] [ Html.label [ HtmlAt.for "komi"] [ Html.text "Komi: " ],
                                Html.input [ HtmlAt.type' "text", HtmlAt.id "komi",
@@ -411,13 +427,17 @@ view model =
                         ("result", Html.p [] [ Html.text (
                             let bs = toFloat b
                                 ws = toFloat w + model.komi in
-                                   if      bs > ws then "Black wins by " ++ toString (bs - ws)
-                                   else if ws > bs then "White wins by " ++ toString (ws - bs)
-                                                   else "Tie"
+                                   case model.resign of
+                                       Just White -> "Black wins by resignation"
+                                       Just Black -> "White wins by resignation"
+                                       Nothing ->
+                                           if      bs > ws then "Black wins by " ++ toString (bs - ws)
+                                           else if ws > bs then "White wins by " ++ toString (ws - bs)
+                                                           else "Tie"
                         )])]
                     Nothing -> []
                 ) ++ [
-                    ("sgf", Html.textarea [ HtmlAt.readonly True ] [ Html.text (generateSGF model.state.size model.state.history model.komi mresult) ])
+                    ("sgf", Html.textarea [ HtmlAt.readonly True ] [ Html.text (generateSGF model.state.size model.state.history model.komi mresult model.resign) ])
                 ]
         |> HtmlK.node "div" [])
     ])]
