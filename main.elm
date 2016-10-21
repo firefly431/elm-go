@@ -13,7 +13,6 @@ import String
 import Array
 
 -- TODO: resign button
---       results in SGF
 
 bg_color : String
 bg_color = "#f2b06d"
