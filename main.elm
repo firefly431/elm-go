@@ -140,7 +140,7 @@ clickGrid pos color grid = case gridGet grid pos of
                         (False, _) -> Just og
 
 gridGet : Grid -> (Int, Int) -> Maybe (Maybe Color)
-gridGet grid (x, y) = Array.get y grid |> flip Maybe.andThen (\row -> Array.get x row)
+gridGet grid (x, y) = Array.get y grid |> flip Maybe.andThen (Array.get x)
 
 gridSet : Grid -> (Int, Int) -> Maybe Color -> Grid
 gridSet grid (x, y) color = let newrow : Maybe (Array.Array (Maybe Color))
@@ -314,7 +314,7 @@ generateSGF size history komi mres resign = "(;FF[4]GM[1]SZ[" ++ toString size +
     ++ "(" ++ generateSGFMoves history ++ "))"
 
 toLetter : Int -> String
-toLetter x = Char.fromCode (x + 97) |> String.fromChar
+toLetter x = (if x < 26 then Char.fromCode (x + 97) else Char.fromCode (x - 26 + 65)) |> String.fromChar
 
 generateSGFMoves : List ((Int, Int), Color) -> String
 generateSGFMoves history = case history of
