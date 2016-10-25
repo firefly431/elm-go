@@ -18,6 +18,33 @@ bg_color = "#f2b06d"
 sizes : List Int
 sizes = [9, 13, 19]
 
+gridColor : String
+gridColor = "black"
+
+gridStroke : String
+gridStroke = "0.10"
+
+starRadius : String
+starRadius = "0.15"
+
+stoneRadius : String
+stoneRadius = "0.45"
+
+stoneStrokeColor : String
+stoneStrokeColor = "black"
+
+stoneStroke : String
+stoneStroke = gridStroke
+
+hoverOpacity : String
+hoverOpacity = "0.5"
+
+markerRadius : Float
+markerRadius = 0.15
+
+markerColor : String
+markerColor = "red"
+
 main = App.beginnerProgram { model = model, view = view, update = update }
 
 type Color = Black | White
@@ -196,7 +223,7 @@ update msg model =
         ChangeSize s -> createModel s model.komi
 
 generateGrid : Int -> Svg.Svg msg
-generateGrid size = let stroke = [ SvgAt.stroke "black", SvgAt.strokeWidth "0.1" ] in
+generateGrid size = let stroke = [ SvgAt.stroke gridColor, SvgAt.strokeWidth gridStroke ] in
     Svg.rect ([
         SvgAt.x "0.5", SvgAt.y "0.5", SvgAt.width (toString (size - 1)), SvgAt.height (toString (size - 1)),
         SvgAt.fill "none"
@@ -237,7 +264,7 @@ generateStars size = (case size of
     |> List.map (\(ix, iy) ->
         let x = toString (toFloat ix - 0.5)
             y = toString (toFloat iy - 0.5) in
-                Svg.circle [ SvgAt.cx x, SvgAt.cy y, SvgAt.r "0.15" ] [] )
+                Svg.circle [ SvgAt.cx x, SvgAt.cy y, SvgAt.r starRadius ] [] )
     |> Svg.g []
 
 generateTargets : Int -> Svg.Svg Msg
@@ -253,8 +280,8 @@ generateTargets size = List.concatMap (\y -> List.map (\x -> Svg.rect [
 
 circleAttributes : (Int, Int) -> Color -> List (Svg.Attribute msg)
 circleAttributes (xz, yz) stone = [
-    SvgAt.cx (toString (toFloat xz + 0.5)), SvgAt.cy (toString (toFloat yz + 0.5)), SvgAt.r "0.40",
-    SvgAt.stroke "black", SvgAt.strokeWidth "0.1", SvgAt.fill (colorToString stone)]
+    SvgAt.cx (toString (toFloat xz + 0.5)), SvgAt.cy (toString (toFloat yz + 0.5)), SvgAt.r stoneRadius,
+    SvgAt.stroke stoneStrokeColor, SvgAt.strokeWidth stoneStroke, SvgAt.fill (colorToString stone)]
 
 generateCircles : Grid -> Svg.Svg msg
 generateCircles grid = List.indexedMap (\yz row -> List.indexedMap (\xz ->
@@ -268,7 +295,7 @@ generateHover : GameState -> (Int, Int) -> Svg.Svg msg
 generateHover state pos = case pos of
     (-1, -1) -> Svg.g [] []
     _ -> case gridGet state.grid pos of
-        Just Nothing -> Svg.circle (SvgAt.opacity "0.5" :: circleAttributes pos state.turn) []
+        Just Nothing -> Svg.circle (SvgAt.opacity hoverOpacity :: circleAttributes pos state.turn) []
         _ -> Svg.g [] []
 
 generateSGF : Int -> List ((Int, Int), Color) -> Float -> (Maybe (Int, Int)) -> Maybe Color -> String
@@ -299,7 +326,7 @@ generateMarker mm = case mm of
     Nothing -> Svg.g [] []
     Just ((x, y), _) -> let fx = toFloat x + 0.5
                             fy = toFloat y + 0.5
-                            sr = 0.15 in Svg.rect [SvgAt.fill "red",
+                            sr = markerRadius in Svg.rect [SvgAt.fill markerColor,
         fx - sr |> toString |> SvgAt.x,
         fy - sr |> toString |> SvgAt.y,
         sr * 2 |> toString |> SvgAt.width,
